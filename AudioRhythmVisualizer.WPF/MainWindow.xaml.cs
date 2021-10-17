@@ -7,8 +7,10 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using AudioRhythmVisualizer.Core.ViewModel;
 using NAudio.CoreAudioApi;
+using NAudio.Mixer;
 using NAudio.Utils;
 using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using ScottPlot.Control;
 using ScottPlot.Plottable;
 using Color = System.Drawing.Color;
@@ -31,9 +33,9 @@ namespace AudioRhythmVisualizer.WPF
 		private VLine[] beatsLines;
 		private Text[] beatsLineLabels;
 
-		private WaveOut mainWaveOut;
-		private WaveOut beatSoftOut;
-		private RawSourceWaveStream beatSoftWaveStream;
+		private WasapiOut mainWaveOut;
+		private MixingSampleProvider mixWaveProvider;
+		private BeepSampleProvider beepProvider;
 
 		private TimeSpan startPosition;
 		private double currentTimePosition;
@@ -49,6 +51,12 @@ namespace AudioRhythmVisualizer.WPF
 			SetupPlot();
 			SetupDispatcher();
 			SetupAudioPlayer();
+		}
+
+		protected override void OnClosed(EventArgs e)
+		{
+			base.OnClosed(e);
+			mainWaveOut.Dispose();
 		}
 
 		private void SetupPlot()
@@ -72,22 +80,29 @@ namespace AudioRhythmVisualizer.WPF
 			dispatcherTimerPlayback.Tick += UpdatePosition;
 			dispatcherTimerGraphUpdate.Tick += UpdateGraph;
 			dispatcherTimerSFX.Tick += UpdateBeat;
-			dispatcherTimerPlayback.Interval = new TimeSpan(0, 0, 0, 0, 8);
+			dispatcherTimerPlayback.Interval = new TimeSpan(0, 0, 0, 0, 2);
 			dispatcherTimerPlayback.Start();
 			dispatcherTimerGraphUpdate.Interval = new TimeSpan(0, 0, 0, 0, 16);
 			dispatcherTimerGraphUpdate.Start();
-			dispatcherTimerSFX.Interval = new TimeSpan(0, 0, 0, 0, 8);
+			dispatcherTimerSFX.Interval = new TimeSpan(0, 0, 0, 0, 2);
 			dispatcherTimerSFX.Start();
 		}
 
 		private void SetupAudioPlayer()
 		{
-			mainWaveOut = new WaveOut();
-			beatSoftOut = new WaveOut();
+			using (WaveFileReader beatSoftWaveStream = new(ResourceUtility.GetSoftBeatFile()))
+			{
+				ISampleProvider isp = beatSoftWaveStream.ToSampleProvider();
+				float[] buffer = new float[beatSoftWaveStream.Length / (beatSoftWaveStream.WaveFormat.BitsPerSample / 8)];
+				isp.Read(buffer, 0, buffer.Length);
+				beepProvider = new BeepSampleProvider(buffer, beatSoftWaveStream.WaveFormat);
+			}
 
-			byte[] rawByte = File.ReadAllBytes(ResourceUtility.GetSoftBeatFile());
-			beatSoftWaveStream = new RawSourceWaveStream(rawByte, 0, rawByte.Length, new WaveFormat(44100, 16, 2));
-			beatSoftOut.Init(beatSoftWaveStream);
+			mixWaveProvider = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(44100, 2));
+			mixWaveProvider.AddMixerInput(beepProvider);
+
+			mainWaveOut = new WasapiOut(AudioClientShareMode.Shared, 30);
+			mainWaveOut.Init(mixWaveProvider);
 		}
 
 		private void AudioDataReady()
@@ -107,7 +122,7 @@ namespace AudioRhythmVisualizer.WPF
 			mainPlot.Render();
 
 			SetPlaybackPosition(0);
-			mainWaveOut.Init(viewModel.fileStream);
+			mixWaveProvider.AddMixerInput(viewModel.fileStream);
 			mainWaveOut.Play();
 		}
 
@@ -232,7 +247,6 @@ namespace AudioRhythmVisualizer.WPF
 			if (mainWaveOut != null && mainWaveOut.PlaybackState == PlaybackState.Playing)
 			{
 				currentTimePosition = (mainWaveOut.GetPositionTimeSpan() + startPosition).TotalSeconds;
-				// currentTimePosition = (mainWaveOut.PlaybackPosition).TotalSeconds;
 			}
 		}
 
@@ -256,8 +270,7 @@ namespace AudioRhythmVisualizer.WPF
 
 			if (currentTimePosition >= viewModel.beatsData[nextBeatIndex])
 			{
-				beatSoftWaveStream.Position = 0;
-				beatSoftOut.Play();
+				beepProvider.RequestBeep();
 				nextBeatIndex++;
 			}
 		}
