@@ -2,13 +2,16 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Media;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using AudioRhythmVisualizer.Core.ViewModel;
 using NAudio.CoreAudioApi;
+using NAudio.Mixer;
 using NAudio.Utils;
 using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using ScottPlot.Control;
 using ScottPlot.Plottable;
 using Color = System.Drawing.Color;
@@ -32,12 +35,12 @@ namespace AudioRhythmVisualizer.WPF
 		private Text[] beatsLineLabels;
 
 		private WaveOut mainWaveOut;
-		private WaveOut beatSoftOut;
-		private RawSourceWaveStream beatSoftWaveStream;
 
 		private TimeSpan startPosition;
 		private double currentTimePosition;
 		private int nextBeatIndex;
+
+		private SoundPlayer soundPlayer;
 
 		public MainWindow()
 		{
@@ -49,6 +52,12 @@ namespace AudioRhythmVisualizer.WPF
 			SetupPlot();
 			SetupDispatcher();
 			SetupAudioPlayer();
+		}
+
+		protected override void OnClosed(EventArgs e)
+		{
+			base.OnClosed(e);
+			mainWaveOut.Dispose();
 		}
 
 		private void SetupPlot()
@@ -67,27 +76,25 @@ namespace AudioRhythmVisualizer.WPF
 		private void SetupDispatcher()
 		{
 			dispatcherTimerPlayback = new DispatcherTimer(DispatcherPriority.Send);
-			dispatcherTimerGraphUpdate = new DispatcherTimer(DispatcherPriority.Render);
-			dispatcherTimerSFX = new DispatcherTimer(DispatcherPriority.Send);
 			dispatcherTimerPlayback.Tick += UpdatePosition;
-			dispatcherTimerGraphUpdate.Tick += UpdateGraph;
-			dispatcherTimerSFX.Tick += UpdateBeat;
-			dispatcherTimerPlayback.Interval = new TimeSpan(0, 0, 0, 0, 8);
+			dispatcherTimerPlayback.Interval = new TimeSpan(0, 0, 0, 0, 2);
 			dispatcherTimerPlayback.Start();
+			dispatcherTimerGraphUpdate = new DispatcherTimer(DispatcherPriority.Render);
+			dispatcherTimerGraphUpdate.Tick += UpdateGraph;
 			dispatcherTimerGraphUpdate.Interval = new TimeSpan(0, 0, 0, 0, 16);
 			dispatcherTimerGraphUpdate.Start();
-			dispatcherTimerSFX.Interval = new TimeSpan(0, 0, 0, 0, 8);
+			dispatcherTimerSFX = new DispatcherTimer(DispatcherPriority.Send);
+			dispatcherTimerSFX.Tick += UpdateBeat;
+			dispatcherTimerSFX.Interval = new TimeSpan(0, 0, 0, 0, 2);
 			dispatcherTimerSFX.Start();
 		}
 
 		private void SetupAudioPlayer()
 		{
-			mainWaveOut = new WaveOut();
-			beatSoftOut = new WaveOut();
+			soundPlayer = new SoundPlayer(ResourceUtility.GetSoftBeatFile());
+			soundPlayer.Load();
 
-			byte[] rawByte = File.ReadAllBytes(ResourceUtility.GetSoftBeatFile());
-			beatSoftWaveStream = new RawSourceWaveStream(rawByte, 0, rawByte.Length, new WaveFormat(44100, 16, 2));
-			beatSoftOut.Init(beatSoftWaveStream);
+			mainWaveOut = new WaveOut();
 		}
 
 		private void AudioDataReady()
@@ -116,18 +123,26 @@ namespace AudioRhythmVisualizer.WPF
 			ClearBeatsLines();
 			if (valid)
 			{
-				beatsLines = new VLine[viewModel.beatsData.Length];
-				beatsLineLabels = new Text[viewModel.beatsData.Length];
-				for (int i = 0; i < viewModel.beatsData.Length; i++)
-				{
-					beatsLines[i] = mainPlot.Plot.AddVerticalLine(viewModel.beatsData[i], Color.SeaGreen);
-					beatsLineLabels[i] =
-						mainPlot.Plot.AddText(i.ToString(), viewModel.beatsData[i], -0.5f, 12f, Color.Chocolate);
-				}
+				BeatDataReady_RefreshPlot();
+				RecalculateNextBeatIndex();
 			}
+
 			if (mainWaveOut.PlaybackState != PlaybackState.Playing)
 			{
 				mainPlot.Refresh();
+			}
+		}
+
+		private void BeatDataReady_RefreshPlot()
+		{
+			beatsLines = new VLine[viewModel.beatsData.Length];
+			beatsLineLabels = new Text[viewModel.beatsData.Length];
+			for (int i = 0; i < viewModel.beatsData.Length; i++)
+			{
+				beatsLines[i] = mainPlot.Plot.AddVerticalLine(viewModel.beatsData[i], Color.SeaGreen);
+				beatsLineLabels[i] =
+					mainPlot.Plot.AddText(i.ToString(), viewModel.beatsData[i], -0.5f, 12f, Color.Chocolate);
+				beatsLineLabels[i].IsVisible = false;
 			}
 		}
 
@@ -232,7 +247,6 @@ namespace AudioRhythmVisualizer.WPF
 			if (mainWaveOut != null && mainWaveOut.PlaybackState == PlaybackState.Playing)
 			{
 				currentTimePosition = (mainWaveOut.GetPositionTimeSpan() + startPosition).TotalSeconds;
-				// currentTimePosition = (mainWaveOut.PlaybackPosition).TotalSeconds;
 			}
 		}
 
@@ -256,8 +270,7 @@ namespace AudioRhythmVisualizer.WPF
 
 			if (currentTimePosition >= viewModel.beatsData[nextBeatIndex])
 			{
-				beatSoftWaveStream.Position = 0;
-				beatSoftOut.Play();
+				soundPlayer.Play();
 				nextBeatIndex++;
 			}
 		}
