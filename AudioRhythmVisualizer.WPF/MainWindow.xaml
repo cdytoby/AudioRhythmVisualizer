@@ -57,7 +57,14 @@
 					Value="{Binding bpmAlignOffset}" />
 				<Button 
 					Focusable="False"
-					Content="Clear Cursor Mark"/>
+					Content="Clear Cursor Mark"
+					Click="ClearCursorMark"/>
+				<CheckBox
+					Name="labelVisibleCheckbox"
+					Focusable="False"
+					Content="Show Beat Index"
+					Checked="ShowTextChanged"
+					Unchecked="ShowTextChanged"/>
 			</StackPanel>
 			<WpfPlot
 				Name="mainPlot" 
