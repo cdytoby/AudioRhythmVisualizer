@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Media;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -33,13 +34,13 @@ namespace AudioRhythmVisualizer.WPF
 		private VLine[] beatsLines;
 		private Text[] beatsLineLabels;
 
-		private WasapiOut mainWaveOut;
-		private MixingSampleProvider mixWaveProvider;
-		private BeepSampleProvider beepProvider;
+		private WaveOut mainWaveOut;
 
 		private TimeSpan startPosition;
 		private double currentTimePosition;
 		private int nextBeatIndex;
+
+		private SoundPlayer soundPlayer;
 
 		public MainWindow()
 		{
@@ -75,34 +76,25 @@ namespace AudioRhythmVisualizer.WPF
 		private void SetupDispatcher()
 		{
 			dispatcherTimerPlayback = new DispatcherTimer(DispatcherPriority.Send);
-			dispatcherTimerGraphUpdate = new DispatcherTimer(DispatcherPriority.Render);
-			dispatcherTimerSFX = new DispatcherTimer(DispatcherPriority.Send);
 			dispatcherTimerPlayback.Tick += UpdatePosition;
-			dispatcherTimerGraphUpdate.Tick += UpdateGraph;
-			dispatcherTimerSFX.Tick += UpdateBeat;
 			dispatcherTimerPlayback.Interval = new TimeSpan(0, 0, 0, 0, 2);
 			dispatcherTimerPlayback.Start();
+			dispatcherTimerGraphUpdate = new DispatcherTimer(DispatcherPriority.Render);
+			dispatcherTimerGraphUpdate.Tick += UpdateGraph;
 			dispatcherTimerGraphUpdate.Interval = new TimeSpan(0, 0, 0, 0, 16);
 			dispatcherTimerGraphUpdate.Start();
+			dispatcherTimerSFX = new DispatcherTimer(DispatcherPriority.Send);
+			dispatcherTimerSFX.Tick += UpdateBeat;
 			dispatcherTimerSFX.Interval = new TimeSpan(0, 0, 0, 0, 2);
 			dispatcherTimerSFX.Start();
 		}
 
 		private void SetupAudioPlayer()
 		{
-			using (WaveFileReader beatSoftWaveStream = new(ResourceUtility.GetSoftBeatFile()))
-			{
-				ISampleProvider isp = beatSoftWaveStream.ToSampleProvider();
-				float[] buffer = new float[beatSoftWaveStream.Length / (beatSoftWaveStream.WaveFormat.BitsPerSample / 8)];
-				isp.Read(buffer, 0, buffer.Length);
-				beepProvider = new BeepSampleProvider(buffer, beatSoftWaveStream.WaveFormat);
-			}
+			soundPlayer = new SoundPlayer(ResourceUtility.GetSoftBeatFile());
+			soundPlayer.Load();
 
-			mixWaveProvider = new MixingSampleProvider(WaveFormat.CreateIeeeFloatWaveFormat(44100, 2));
-			mixWaveProvider.AddMixerInput(beepProvider);
-
-			mainWaveOut = new WasapiOut(AudioClientShareMode.Shared, 30);
-			mainWaveOut.Init(mixWaveProvider);
+			mainWaveOut = new WaveOut();
 		}
 
 		private void AudioDataReady()
@@ -122,7 +114,7 @@ namespace AudioRhythmVisualizer.WPF
 			mainPlot.Render();
 
 			SetPlaybackPosition(0);
-			mixWaveProvider.AddMixerInput(viewModel.fileStream);
+			mainWaveOut.Init(viewModel.fileStream);
 			mainWaveOut.Play();
 		}
 
@@ -131,18 +123,26 @@ namespace AudioRhythmVisualizer.WPF
 			ClearBeatsLines();
 			if (valid)
 			{
-				beatsLines = new VLine[viewModel.beatsData.Length];
-				beatsLineLabels = new Text[viewModel.beatsData.Length];
-				for (int i = 0; i < viewModel.beatsData.Length; i++)
-				{
-					beatsLines[i] = mainPlot.Plot.AddVerticalLine(viewModel.beatsData[i], Color.SeaGreen);
-					beatsLineLabels[i] =
-						mainPlot.Plot.AddText(i.ToString(), viewModel.beatsData[i], -0.5f, 12f, Color.Chocolate);
-				}
+				BeatDataReady_RefreshPlot();
+				RecalculateNextBeatIndex();
 			}
+
 			if (mainWaveOut.PlaybackState != PlaybackState.Playing)
 			{
 				mainPlot.Refresh();
+			}
+		}
+
+		private void BeatDataReady_RefreshPlot()
+		{
+			beatsLines = new VLine[viewModel.beatsData.Length];
+			beatsLineLabels = new Text[viewModel.beatsData.Length];
+			for (int i = 0; i < viewModel.beatsData.Length; i++)
+			{
+				beatsLines[i] = mainPlot.Plot.AddVerticalLine(viewModel.beatsData[i], Color.SeaGreen);
+				beatsLineLabels[i] =
+					mainPlot.Plot.AddText(i.ToString(), viewModel.beatsData[i], -0.5f, 12f, Color.Chocolate);
+				beatsLineLabels[i].IsVisible = false;
 			}
 		}
 
@@ -270,7 +270,7 @@ namespace AudioRhythmVisualizer.WPF
 
 			if (currentTimePosition >= viewModel.beatsData[nextBeatIndex])
 			{
-				beepProvider.RequestBeep();
+				soundPlayer.Play();
 				nextBeatIndex++;
 			}
 		}

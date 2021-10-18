@@ -28,6 +28,7 @@ namespace AudioRhythmVisualizer.Core.ViewModel
 		[OnChangedMethod(nameof(GenerateBeatsData))]
 		public float bpmAlignOffset { get; set; }
 		public float bpmScrollStep { get; set; } = 0.1f;
+		public float beatInterval { get; private set; }
 		public double[] beatsData { get; private set; }
 
 		public double audioTimeLength => fileStream?.TotalTime.TotalSeconds ?? 0;
@@ -38,7 +39,7 @@ namespace AudioRhythmVisualizer.Core.ViewModel
 		{
 			loadCommand = new RelayCommand(LoadFile);
 			filePath = @"H:\Projects\AudioRhythmVisual\Original.wav";
-			//1.2, around 160
+			//1.2, around 150
 		}
 
 		[SuppressMessage("ReSharper.DPA", "DPA0001: Memory allocation issues")]
@@ -91,12 +92,12 @@ namespace AudioRhythmVisualizer.Core.ViewModel
 			}
 			else
 			{
-				double interval = 1 / (bpm / 60);
-				int beatCount = (int)Math.Floor((audioTimeLength - bpmAlignOffset) / interval);
+				beatInterval = 1 / (bpm / 60);
+				int beatCount = (int)Math.Floor((audioTimeLength - bpmAlignOffset) / beatInterval);
 				beatsData = new double[beatCount];
 				for (int i = 0; i < beatCount; i++)
 				{
-					beatsData[i] = bpmAlignOffset + interval * i;
+					beatsData[i] = bpmAlignOffset + beatInterval * i;
 				}
 				beatDataReady?.Invoke(true);
 			}
