@@ -20,55 +20,62 @@
 				DockPanel.Dock="Top"
 				Orientation="Horizontal"
 				HorizontalAlignment="Center">
-				<TextBox 
+				<TextBox
 					Height="30"
 					Width="400"
-					Text="{Binding filePath}"/>
+					Text="{Binding filePath}" />
 				<Button
-					Content="Load" 
+					Content="Load"
 					Focusable="False"
-					Command="{Binding loadCommand}"/>
+					Command="{Binding loadCommand}" />
 			</StackPanel>
 			<StackPanel
 				DockPanel.Dock="Top"
 				Orientation="Horizontal"
 				HorizontalAlignment="Center">
 				<Label
-					Content="BPM"/>
+					Content="BPM" />
 				<xctk:DecimalUpDown
 					Width="80"
 					Minimum="0"
 					Focusable="False"
 					Increment="{Binding bpmScrollStep}"
-					Value="{Binding bpm}"/>
-				<Label 
-					Content="Scroll Step"/>
-				<xctk:DecimalUpDown 
+					Value="{Binding bpm}" />
+				<Label
+					Content="Scroll Step" />
+				<xctk:DecimalUpDown
 					Width="50"
 					Focusable="False"
 					Minimum="0.001"
 					Increment="0.01"
 					Value="{Binding bpmScrollStep}" />
-				<Label Content="BPM Start Offset"/>
+				<Label Content="BPM Start Offset" />
 				<xctk:DecimalUpDown
 					Width="80"
 					Focusable="False"
 					Increment="0.01"
 					Value="{Binding bpmAlignOffset}" />
-				<Button 
+				<Button
 					Focusable="False"
 					Content="Clear Cursor Mark"
-					Click="ClearCursorMark"/>
+					Click="ClearCursorMark" />
 				<CheckBox
-					Name="labelVisibleCheckbox"
+					Name="beatSoundEnableCheckbox"
+					VerticalAlignment="Center"
 					Focusable="False"
-					Content="Show Beat Index"
-					Checked="ShowTextChanged"
-					Unchecked="ShowTextChanged"/>
+					Content="Enable Beat Sound"/>
+			</StackPanel>
+			<StackPanel
+				DockPanel.Dock="Bottom"
+				Orientation="Horizontal"
+				HorizontalAlignment="Center">
+				<Label
+					Name="debugLabel"
+					Content="Debug Text" />
 			</StackPanel>
 			<WpfPlot
-				Name="mainPlot" 
-				Focusable="True"/>
+				Name="mainPlot"
+				Focusable="True" />
 		</DockPanel>
 	</Grid>
 </Window>

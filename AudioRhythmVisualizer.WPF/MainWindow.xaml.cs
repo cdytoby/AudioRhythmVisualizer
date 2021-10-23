@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using AudioRhythmVisualizer.Core.ViewModel;
 using NAudio.Utils;
 using NAudio.Wave;
+using ScottPlot;
 using ScottPlot.Control;
 using ScottPlot.Plottable;
 using Color = System.Drawing.Color;
@@ -20,6 +21,8 @@ namespace AudioRhythmVisualizer.WPF
 	/// </summary>
 	public partial class MainWindow: Window
 	{
+		private const int MAX_BEATS_LINE_COUNT = 12;
+
 		private MainViewModel viewModel;
 
 		private DispatcherTimer dispatcherTimerPlayback;
@@ -144,21 +147,9 @@ namespace AudioRhythmVisualizer.WPF
 			{
 				beatsLines[i] = mainPlot.Plot.AddVerticalLine(viewModel.beatsData[i], Color.SeaGreen);
 				beatsTexts[i] = mainPlot.Plot.AddText(i.ToString(), viewModel.beatsData[i], -0.5f, 10f, Color.Coral);
-				beatsTexts[i].IsVisible = labelVisibleCheckbox.IsChecked.GetValueOrDefault();
-			}
-		}
-
-		private void SetShowBeatIndex(bool shouldShow)
-		{
-			if (beatsTexts == null)
-			{
-				return;
 			}
 
-			foreach (Text t in beatsTexts)
-			{
-				t.IsVisible = shouldShow;
-			}
+			UpdateGraph_Scale();
 		}
 
 		private void ClearBeatsLines()
@@ -268,10 +259,57 @@ namespace AudioRhythmVisualizer.WPF
 
 		private void UpdateGraph(object sender, EventArgs e)
 		{
+			UpdateGraph_Scale();
+			
 			if (mainWaveOut != null && mainWaveOut.PlaybackState == PlaybackState.Playing)
 			{
 				playbackLine.X = currentTimePosition;
 				mainPlot.Refresh();
+			}
+
+			AxisLimits axisInfo = mainPlot.Plot.GetAxisLimits();
+			debugLabel.Content = $"{axisInfo.XMin}, {axisInfo.XCenter}, {axisInfo.XMax}, {axisInfo.XSpan}";
+		}
+
+		private void UpdateGraph_Scale()
+		{
+			if (beatsLines == null || beatsLines.Length == 0)
+			{
+				return;
+			}
+			
+			AxisLimits axisInfo = mainPlot.Plot.GetAxisLimits();
+			int linePerBeatCount = (int)Math.Ceiling(axisInfo.XSpan / viewModel.beatInterval / MAX_BEATS_LINE_COUNT);
+
+			int firstIndex = -1;
+			for (int i = 0; i < beatsLines.Length; i++)
+			{
+				VLine line = beatsLines[i];
+				Text text = beatsTexts[i];
+
+				if (line.X < axisInfo.XMin || line.X > axisInfo.XMax)
+				{
+					line.IsVisible = false;
+					text.IsVisible = false;
+				}
+				else
+				{
+					if (firstIndex < 0)
+					{
+						firstIndex = i;
+					}
+					if ((i - firstIndex) % linePerBeatCount == 0)
+					{
+						line.IsVisible = true;
+						text.IsVisible = true;
+					}
+					else
+					{
+						line.IsVisible = false;
+						text.IsVisible = false;
+					}
+				}
+
 			}
 		}
 
@@ -286,7 +324,10 @@ namespace AudioRhythmVisualizer.WPF
 
 			if (currentTimePosition >= viewModel.beatsData[nextBeatIndex])
 			{
-				soundPlayer.Play();
+				if (beatSoundEnableCheckbox.IsChecked.GetValueOrDefault())
+				{
+					soundPlayer.Play();
+				}
 				nextBeatIndex++;
 			}
 		}
@@ -298,11 +339,6 @@ namespace AudioRhythmVisualizer.WPF
 				mainPlot.Plot.Remove(cursorMarkLine);
 				cursorMarkLine = null;
 			}
-		}
-
-		private void ShowTextChanged(object sender, RoutedEventArgs e)
-		{
-			SetShowBeatIndex(labelVisibleCheckbox.IsChecked.GetValueOrDefault());
 		}
 	}
 }
